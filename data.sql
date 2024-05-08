@@ -46,6 +46,15 @@ CREATE TABLE grades
     PRIMARY KEY (student_id, assignment_id)
 );
 
+CREATE TABLE enrollments
+(
+    student_id INT,
+    course_id  INT,
+    FOREIGN KEY (student_id) REFERENCES students (student_id),
+    FOREIGN KEY (course_id) REFERENCES courses (course_id),
+    PRIMARY KEY (student_id, course_id)
+);
+
 INSERT INTO students (student_id, first_name, last_name)
 VALUES (1, 'John', 'Doe'),
        (2, 'Jane', 'Smith'),
@@ -71,14 +80,20 @@ VALUES (1, 1, 90),
        (3, 1, 85),
        (3, 2, 90);
 
+INSERT INTO Enrollments (student_id, course_id)
+VALUES (1, 1),
+       (1, 2),
+       (2, 1),
+       (2, 2),
+       (3, 1),
+       (3, 2);
+
 # Queries:
 # 1) Retrieve the list of all students who have enrolled in a specific course.
 SELECT s.first_name, s.last_name
 FROM students s
-         JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
-WHERE c.course_name = 'Math 101';
+         JOIN enrollments e ON s.student_id = e.student_id
+WHERE e.course_id = 1;
 
 # 2) Retrieve the average grade of a specific assignment across all students.
 SELECT AVG(grade)
@@ -87,10 +102,9 @@ WHERE assignment_id = 1;
 
 # 3) Retrieve the list of all courses taken by a specific student.
 SELECT c.course_name
-FROM courses c
-         JOIN assignments a ON c.course_id = a.course_id
-         JOIN grades g ON a.assignment_id = g.assignment_id
-         JOIN students s ON g.student_id = s.student_id
+from courses c
+         JOIN enrollments e ON c.course_id = e.course_id
+         JOIN students s ON e.student_id = s.student_id
 WHERE s.first_name = 'John'
   AND s.last_name = 'Doe';
 
@@ -101,12 +115,10 @@ FROM instructors i
 WHERE c.course_name = 'Math 101';
 
 # 5) Retrieve the total number of students enrolled in a specific course.
-SELECT COUNT(DISTINCT s.student_id)
+SELECT COUNT(s.student_id)
 FROM students s
-         JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
-WHERE c.course_name = 'Math 101';
+         JOIN enrollments e ON s.student_id = e.student_id
+WHERE e.course_id = 1;
 
 # 6) Retrieve the list of all assignments for a specific course.
 SELECT a.assignment_name
@@ -123,19 +135,18 @@ WHERE student_id = 1
 # 8) Retrieve the list of all students who have not completed a specific assignment.
 SELECT s.first_name, s.last_name
 FROM students s
-         LEFT JOIN grades g ON s.student_id = g.student_id AND g.assignment_id = 2
-WHERE g.grade IS NULL;
+         LEFT JOIN grades g ON s.student_id = g.student_id
+WHERE g.grade IS NULL AND g.assignment_id = 2;
 
 # 9) Retrieve the list of all courses that have more than 50 students enrolled.
 SELECT c.course_name
 FROM courses c
-         JOIN assignments a ON c.course_id = a.course_id
-         JOIN grades g ON a.assignment_id = g.assignment_id
+         JOIN enrollments e ON c.course_id = e.course_id
 GROUP BY c.course_name
-HAVING COUNT(DISTINCT g.student_id) > 50;
+HAVING COUNT(e.student_id) > 50;
 
 # 10) Retrieve the list of all students who have an overall grade average of 90% or higher.
-SELECT s.first_name, s.last_name
+SELECT s.student_id, s.first_name, s.last_name
 FROM students s
          JOIN grades g ON s.student_id = g.student_id
 GROUP BY s.student_id
@@ -157,7 +168,7 @@ WHERE c.course_name = 'Math 101'
 GROUP BY a.assignment_name;
 
 # 13) Retrieve the number of students who have completed each assignment in a specific course.
-SELECT a.assignment_name, COUNT(DISTINCT g.student_id) AS num_students_completed
+SELECT a.assignment_name, COUNT(g.student_id) AS num_students_completed
 FROM assignments a
          JOIN grades g ON a.assignment_id = g.assignment_id
          JOIN courses c ON a.course_id = c.course_id
@@ -165,7 +176,7 @@ WHERE c.course_name = 'Math 101'
 GROUP BY a.assignment_name;
 
 # 14) Retrieve the top 5 students with the highest overall grade average.
-SELECT s.first_name, s.last_name, AVG(g.grade) AS overall_grade_average
+SELECT s.student_id, AVG(g.grade) AS overall_grade_average
 FROM students s
          JOIN grades g ON s.student_id = g.student_id
 GROUP BY s.student_id
@@ -173,7 +184,7 @@ ORDER BY overall_grade_average DESC
 LIMIT 5;
 
 # 15) Retrieve the instructor with the highest overall average grade for all courses they teach.
-SELECT i.first_name, i.last_name, AVG(g.grade) AS overall_grade_average
+SELECT i.instructor_id, AVG(g.grade) AS overall_grade_average
 FROM instructors i
          JOIN courses c ON i.instructor_id = c.instructor_id
          JOIN assignments a ON c.course_id = a.course_id
@@ -186,10 +197,9 @@ LIMIT 1;
 SELECT s.first_name, s.last_name
 FROM students s
          JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
-WHERE c.course_name = 'Math 101'
-  AND g.grade >= 90;
+         JOIN enrollments e ON s.student_id = e.student_id
+         JOIN courses c ON e.course_id = c.course_id
+WHERE c.course_name = 'Math 101' AND g.grade >= 90;
 
 # 17) Retrieve the list of courses that have no assignments.
 SELECT c.course_name
@@ -198,14 +208,13 @@ FROM courses c
 WHERE a.assignment_id IS NULL;
 
 # 18) Retrieve the list of students who have the highest grade in a specific course.
-SELECT s.first_name, s.last_name
-FROM students s
+SELECT s.student_id, MAX(g.grade)
+From students s
          JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
+         JOIN enrollments e ON g.student_id = e.student_id
+         JOIN courses c ON e.course_id = c.course_id
 WHERE c.course_name = 'Math 101'
-GROUP BY s.student_id
-HAVING g.grade = MAX(g.grade);
+GROUP BY s.student_id;
 
 # 19) Retrieve the list of assignments that have the lowest average grade in a specific course.
 SELECT a.assignment_name, AVG(g.grade) AS average_grade
@@ -214,47 +223,45 @@ FROM assignments a
          JOIN courses c ON a.course_id = c.course_id
 WHERE c.course_name = 'Math 101'
 GROUP BY a.assignment_name
-ORDER BY average_grade
-LIMIT 1;
+ORDER BY average_grade;
 
 # 20) Retrieve the list of students who have not enrolled in any course.
 SELECT s.first_name, s.last_name
 FROM students s
-         LEFT JOIN grades g ON s.student_id = g.student_id
-WHERE g.student_id IS NULL;
+         LEFT JOIN enrollments e ON s.student_id = e.student_id
+WHERE e.student_id IS NULL;
 
 # 21) Retrieve the list of instructors who are teaching more than one course.
-SELECT i.first_name, i.last_name
+SELECT i.instructor_id, COUNT(c.course_id) AS num_courses_taught
 FROM instructors i
          JOIN courses c ON i.instructor_id = c.instructor_id
 GROUP BY i.instructor_id
 HAVING COUNT(c.course_id) > 1;
 
 # 22) Retrieve the list of students who have not submitted an assignment for a specific course.
-SELECT s.first_name, s.last_name
+SELECT s.student_id
 FROM students s
          JOIN grades g ON s.student_id = g.student_id
          JOIN assignments a ON g.assignment_id = a.assignment_id
          JOIN courses c ON a.course_id = c.course_id
 WHERE c.course_name = 'Math 101'
 GROUP BY s.student_id
-HAVING COUNT(g.assignment_id) < (SELECT COUNT(a.assignment_id) FROM assignments a WHERE a.course_id = c.course_id);
+HAVING COUNT(g.assignment_id) = 0;
 
 # 23) Retrieve the list of courses that have the highest average grade.
-SELECT c.course_name, AVG(g.grade) AS average_grade
+SELECT c.course_id, AVG(g.grade) AS average_grade
 FROM courses c
          JOIN assignments a ON c.course_id = a.course_id
          JOIN grades g ON a.assignment_id = g.assignment_id
 GROUP BY c.course_id
-ORDER BY average_grade DESC
-LIMIT 1;
+ORDER BY average_grade DESC;
 
 # 24) Retrieve the list of assignments that have a grade average higher than the overall grade average.
-SELECT a.assignment_name, AVG(g.grade) AS average_grade
+SELECT a.assignment_id, AVG(g.grade) AS average_grade
 FROM assignments a
          JOIN grades g ON a.assignment_id = g.assignment_id
 GROUP BY a.assignment_id
-HAVING average_grade > (SELECT AVG(grade) FROM grades);
+HAVING AVG(g.grade) > (SELECT AVG(grade) FROM grades);
 
 # 25) Retrieve the list of courses that have at least one student with a grade of F.
 SELECT c.course_name
