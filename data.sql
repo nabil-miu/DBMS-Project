@@ -498,22 +498,18 @@ LIMIT 1;
 # 51) Retrieve the list of students who have not yet submitted any assignments for a specific course.
 SELECT s.first_name, s.last_name
 FROM students s
-         JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
-WHERE c.course_name = 'Math 101'
-GROUP BY s.student_id
-HAVING COUNT(g.assignment_id) = 0;
+         LEFT JOIN grades g ON s.student_id = g.student_id
+         LEFT JOIN assignments a ON g.assignment_id = a.assignment_id AND a.course_id = 1
+WHERE a.assignment_id IS NULL
+GROUP BY s.student_id;
 
 # 52) Retrieve the list of students who have submitted at least one assignment for a specific course but have not completed all assignments.
 SELECT s.first_name, s.last_name
 FROM students s
          JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
-WHERE c.course_name = 'Math 101'
+         JOIN assignments a ON g.assignment_id = a.assignment_id AND a.course_id = 1
 GROUP BY s.student_id
-HAVING COUNT(g.assignment_id) < (SELECT COUNT(a.assignment_id) FROM assignments a WHERE a.course_id = c.course_id);
+HAVING COUNT(DISTINCT g.assignment_id) < (SELECT COUNT(*) FROM assignments WHERE course_id = 1);
 
 # 53) Retrieve the list of assignments that have received the highest average grade.
 SELECT a.assignment_name, AVG(g.grade) AS average_grade
@@ -543,35 +539,34 @@ LIMIT 1;
 # 56) Retrieve the list of courses that have at least one student enrolled but no assignments have been created yet.
 SELECT c.course_name
 FROM courses c
+         JOIN enrollments e ON c.course_id = e.course_id
          LEFT JOIN assignments a ON c.course_id = a.course_id
-         LEFT JOIN grades g ON a.assignment_id = g.assignment_id
 WHERE a.assignment_id IS NULL
-  AND g.student_id IS NOT NULL;
+GROUP BY c.course_id
+HAVING COUNT(DISTINCT e.student_id) > 0;
 
 # 57) Retrieve the list of courses that have at least one assignment created but no student has enrolled yet.
 SELECT c.course_name
 FROM courses c
-         LEFT JOIN assignments a ON c.course_id = a.course_id
-         LEFT JOIN grades g ON a.assignment_id = g.assignment_id
-WHERE a.assignment_id IS NOT NULL
-  AND g.student_id IS NULL;
+         JOIN assignments a ON c.course_id = a.course_id
+         LEFT JOIN enrollments e ON c.course_id = e.course_id
+WHERE e.student_id IS NULL
+GROUP BY c.course_id
+HAVING COUNT(DISTINCT a.assignment_id) > 0;
 
 # 58) Retrieve the list of students who have submitted all assignments for a specific course.
 SELECT s.first_name, s.last_name
 FROM students s
          JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
-WHERE c.course_name = 'Math 101'
+         JOIN assignments a ON g.assignment_id = a.assignment_id AND a.course_id = 1
 GROUP BY s.student_id
-HAVING COUNT(g.assignment_id) = (SELECT COUNT(a.assignment_id) FROM assignments a WHERE a.course_id = c.course_id);
+HAVING COUNT(DISTINCT g.assignment_id) = (SELECT COUNT(*) FROM assignments WHERE course_id = 1);
 
 # 59) Retrieve the list of courses where the overall average grade is higher than the average grade of a specific student.
 SELECT c.course_name, AVG(g.grade) AS overall_grade_average
 FROM courses c
          JOIN assignments a ON c.course_id = a.course_id
          JOIN grades g ON a.assignment_id = g.assignment_id
-         JOIN students s ON g.student_id = s.student_id
 GROUP BY c.course_id
 HAVING overall_grade_average > (SELECT AVG(grade) FROM grades WHERE student_id = 1);
 
@@ -587,10 +582,11 @@ FROM students s
          JOIN grades g ON s.student_id = g.student_id
          JOIN assignments a ON g.assignment_id = a.assignment_id
          JOIN courses c ON a.course_id = c.course_id
+         JOIN enrollments e ON s.student_id = e.student_id AND c.course_id = e.course_id
 GROUP BY s.student_id
-HAVING COUNT(DISTINCT c.course_id) = (SELECT COUNT(DISTINCT c.course_id)
-                                      FROM courses c
-                                               JOIN assignments a ON c.course_id = a.course_id);
+HAVING COUNT(DISTINCT c.course_id) = (SELECT COUNT(DISTINCT course_id)
+                                      FROM enrollments
+                                      WHERE student_id = s.student_id);
 
 # 62) Retrieve the list of courses where the average grade is lower than a specific threshold.
 SELECT c.course_name, AVG(g.grade) AS average_grade
@@ -601,10 +597,9 @@ GROUP BY c.course_id
 HAVING average_grade < 70;
 
 # 63) Retrieve the list of courses where the number of students enrolled is less than a specific threshold.
-SELECT c.course_name, COUNT(DISTINCT g.student_id) AS num_students_enrolled
+SELECT c.course_name, COUNT(DISTINCT e.student_id) AS num_students_enrolled
 FROM courses c
-         JOIN assignments a ON c.course_id = a.course_id
-         JOIN grades g ON a.assignment_id = g.assignment_id
+         JOIN enrollments e ON c.course_id = e.course_id
 GROUP BY c.course_id
 HAVING num_students_enrolled < 50;
 
@@ -612,11 +607,11 @@ HAVING num_students_enrolled < 50;
 SELECT s.first_name, s.last_name
 FROM students s
          JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
-WHERE c.course_name = 'Math 101'
+         JOIN assignments a ON g.assignment_id = a.assignment_id AND a.course_id = 1
+         LEFT JOIN enrollments e ON s.student_id = e.student_id AND a.course_id = e.course_id
+WHERE e.student_id IS NULL
 GROUP BY s.student_id
-HAVING COUNT(g.assignment_id) = (SELECT COUNT(a.assignment_id) FROM assignments a WHERE a.course_id = c.course_id);
+HAVING COUNT(DISTINCT g.assignment_id) = (SELECT COUNT(*) FROM assignments WHERE course_id = 1);
 
 # 65) Retrieve the list of courses where the average grade is higher than the overall average grade of all courses.
 SELECT c.course_name, AVG(g.grade) AS average_grade
@@ -627,10 +622,11 @@ GROUP BY c.course_id
 HAVING average_grade > (SELECT AVG(grade) FROM grades);
 
 # 66) Retrieve the list of courses where the average grade is higher than a specific threshold and the number of students enrolled is greater than a specific threshold.
-SELECT c.course_name, AVG(g.grade) AS average_grade, COUNT(DISTINCT g.student_id) AS num_students_enrolled
+SELECT c.course_name, AVG(g.grade) AS average_grade, COUNT(DISTINCT e.student_id) AS num_students_enrolled
 FROM courses c
          JOIN assignments a ON c.course_id = a.course_id
          JOIN grades g ON a.assignment_id = g.assignment_id
+         JOIN enrollments e ON c.course_id = e.course_id
 GROUP BY c.course_id
 HAVING average_grade > 80
    AND num_students_enrolled > 50;
@@ -640,80 +636,96 @@ SELECT s.first_name, s.last_name
 FROM students s
          JOIN grades g ON s.student_id = g.student_id
          JOIN assignments a ON g.assignment_id = a.assignment_id
+         JOIN enrollments e ON s.student_id = e.student_id
 WHERE a.due_date < DATE_SUB(NOW(), INTERVAL 1 MONTH)
 GROUP BY s.student_id
-HAVING COUNT(DISTINCT a.course_id) >= 2;
+HAVING COUNT(DISTINCT e.course_id) >= 2;
 
 # 68) Retrieve the list of courses where the percentage of students who have submitted all the assignments is higher than a specific threshold.
-SELECT c.course_name, COUNT(DISTINCT s.student_id) / COUNT(DISTINCT g.student_id) AS completion_rate
+SELECT c.course_name,
+       COUNT(DISTINCT case when cnt = total_assignments then s.student_id end) * 1.0 / COUNT(DISTINCT e.student_id) AS completion_rate
 FROM courses c
-         JOIN assignments a ON c.course_id = a.course_id
-         JOIN grades g ON a.assignment_id = g.assignment_id
-         JOIN students s ON g.student_id = s.student_id
+JOIN assignments a ON c.course_id = a.course_id
+JOIN (
+  SELECT s.student_id, e.course_id, COUNT(g.assignment_id) cnt, (SELECT COUNT(*) FROM assignments a2 WHERE a2.course_id = e.course_id) total_assignments
+  FROM students s
+  JOIN enrollments e ON s.student_id = e.student_id
+  LEFT JOIN grades g ON s.student_id = g.student_id AND e.course_id = a.course_id
+  GROUP BY s.student_id, e.course_id
+) counts ON c.course_id = counts.course_id
+JOIN enrollments e ON c.course_id = e.course_id
 GROUP BY c.course_id
 HAVING completion_rate > 0.8;
 
 # 69) Retrieve the list of students who have enrolled in a course but have not submitted any assignments.
 SELECT s.first_name, s.last_name
 FROM students s
-         JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-GROUP BY s.student_id
-HAVING COUNT(g.assignment_id) = 0;
+JOIN enrollments e ON s.student_id = e.student_id
+LEFT JOIN grades g ON s.student_id = g.student_id AND e.course_id = a.course_id
+LEFT JOIN assignments a ON e.course_id = a.course_id
+WHERE g.assignment_id IS NULL
+GROUP BY s.student_id;
 
 # 70) Retrieve the list of courses where the percentage of students who have submitted at least one assignment is lower than a specific threshold.
-SELECT c.course_name, COUNT(DISTINCT s.student_id) / COUNT(DISTINCT g.student_id) AS submission_rate
+SELECT c.course_name, 1.0 * COUNT(DISTINCT case when cnt > 0 then s.student_id end) / COUNT(DISTINCT e.student_id) AS submission_rate
 FROM courses c
-         JOIN assignments a ON c.course_id = a.course_id
-         JOIN grades g ON a.assignment_id = g.assignment_id
-         JOIN students s ON g.student_id = s.student_id
+JOIN enrollments e ON c.course_id = e.course_id
+JOIN (
+  SELECT s.student_id, e.course_id, COUNT(g.assignment_id) cnt
+  FROM students s
+  JOIN enrollments e ON s.student_id = e.student_id
+  LEFT JOIN grades g ON s.student_id = g.student_id AND e.course_id = a.course_id
+  LEFT JOIN assignments a ON g.assignment_id = a.assignment_id
+  GROUP BY s.student_id, e.course_id
+) counts ON e.course_id = counts.course_id AND e.student_id = counts.student_id
 GROUP BY c.course_id
 HAVING submission_rate < 0.5;
 
 # 71) Retrieve the list of students who have submitted an assignment after the due date.
 SELECT s.first_name, s.last_name
 FROM students s
-         JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
+JOIN grades g ON s.student_id = g.student_id
+JOIN assignments a ON g.assignment_id = a.assignment_id
 WHERE g.grade_date > a.due_date;
 
 # 72) Retrieve the list of courses where the average grade of female students is higher than that of male students.
-SELECT c.course_name, AVG(g.grade) AS average_grade
+SELECT c.course_name,
+       AVG(CASE WHEN s.gender = 'F' THEN g.grade END) AS female_avg_grade,
+       AVG(CASE WHEN s.gender = 'M' THEN g.grade END) AS male_avg_grade
 FROM courses c
-         JOIN assignments a ON c.course_id = a.course_id
-         JOIN grades g ON a.assignment_id = g.assignment_id
-         JOIN students s ON g.student_id = s.student_id
+JOIN assignments a ON c.course_id = a.course_id
+JOIN grades g ON a.assignment_id = g.assignment_id
+JOIN students s ON g.student_id = s.student_id
 GROUP BY c.course_id
-HAVING AVG(g.grade) > (SELECT AVG(g.grade)
-                       FROM grades g
-                                JOIN students s ON g.student_id = s.student_id);
-
+HAVING female_avg_grade > male_avg_grade;
 
 # 73) Retrieve the list of courses that have at least one female student and no male students.
 SELECT c.course_name
 FROM courses c
-         JOIN assignments a ON c.course_id = a.course_id
-         JOIN grades g ON a.assignment_id = g.assignment_id
-         JOIN students s ON g.student_id = s.student_id
-
-GROUP BY c.course_id;
+JOIN assignments a ON c.course_id = a.course_id
+JOIN grades g ON a.assignment_id = g.assignment_id
+JOIN students s ON g.student_id = s.student_id
+GROUP BY c.course_id
+HAVING SUM(CASE WHEN s.gender = 'F' THEN 1 ELSE 0 END) > 0
+   AND SUM(CASE WHEN s.gender = 'M' THEN 1 ELSE 0 END) = 0;
 
 # 74) Retrieve the list of students who have submitted at least one assignment in all the courses they are enrolled in.
 SELECT s.first_name, s.last_name
 FROM students s
-         JOIN grades g ON s.student_id = g.student_id
-         JOIN assignments a ON g.assignment_id = a.assignment_id
-         JOIN courses c ON a.course_id = c.course_id
+JOIN grades g ON s.student_id = g.student_id
+JOIN assignments a ON g.assignment_id = a.assignment_id
 GROUP BY s.student_id
-HAVING COUNT(DISTINCT c.course_id) = (SELECT COUNT(DISTINCT c.course_id)
-                                      FROM courses c
-                                               JOIN assignments a ON c.course_id = a.course_id);
+HAVING COUNT(DISTINCT a.course_id) = (
+  SELECT COUNT(DISTINCT e.course_id)
+  FROM enrollments e
+  WHERE e.student_id = s.student_id
+);
 
 # 75) Retrieve the list of students who have not enrolled in any courses.
 SELECT s.first_name, s.last_name
 FROM students s
-         LEFT JOIN grades g ON s.student_id = g.student_id
-WHERE g.student_id IS NULL;
+LEFT JOIN enrollments e ON s.student_id = e.student_id
+WHERE e.student_id IS NULL;
 
 # 76) Retrieve the list of courses that have the highest number of enrolled students.
 SELECT c.course_name, COUNT(DISTINCT g.student_id) AS num_students_enrolled
